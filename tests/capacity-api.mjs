@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import {harness} from './route-harness.mjs';
+const h=harness(),sqlite=h.sqlite;
+let user={userId:'owner'};
+const POST=async req=>{const r=await h.request(user?.userId,await req.json(),req.headers.get('origin'));return Response.json(r.data,{status:r.status})};
+const GET=async()=>Response.json(await h.get(user?.userId));
+const details={date:'2099-10-19',start:'19:00',end:'20:00',venue:'Test court',court:'1',booked:'Owner',notes:'Keep this note'};
+async function post(body,status=200){const response=await POST(new Request('https://example.test/api/board',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));const data=await response.json();assert.equal(response.status,status,JSON.stringify({body,data}));return data;}
+function session(){return sqlite.prepare('SELECT * FROM sessions ORDER BY rowid DESC LIMIT 1').get();}
+await post({action:'create',...details});assert.equal(session().capacity,4);
+const legacy=session();
+for(const capacity of [0,-1,1.5,'','abc',null,true,{},[],Number.MAX_SAFE_INTEGER+1])await post({action:'create',...details,capacity},400);
+for(const capacity of [1,8,12]){await post({action:'create',...details,capacity});assert.equal(session().capacity,capacity);}
+await post({action:'create',...details,capacity:'8'});const coach=session();
+await post({action:'edit',id:coach.id,...details});assert.equal(session().capacity,8,'older clients preserve existing capacity');
+for(let i=0;i<8;i++)await post({action:'manual',id:coach.id,name:'Player '+i,status:i===0?'tentative':'confirmed'});
+await post({action:'manual',id:coach.id,name:'Overflow',status:'confirmed'},409);
+await post({action:'manual',id:coach.id,name:'Standby',status:'standby'});
+const before=sqlite.prepare('SELECT * FROM players WHERE session=? ORDER BY user').all(coach.id);
+await post({action:'edit',id:coach.id,...details,capacity:7,notes:'Must not save'},409);
+assert.equal(session().capacity,8);assert.equal(session().notes,details.notes);
+assert.deepEqual(sqlite.prepare('SELECT * FROM players WHERE session=? ORDER BY user').all(coach.id),before);
+await post({action:'edit',id:coach.id,...details,capacity:0},400);
+await post({action:'edit',id:coach.id,...details,capacity:8});
+user={userId:'visitor',email:'visitor@example.test',fullName:'Visitor'};
+await post({action:'edit',id:coach.id,...details,capacity:9},403);
+await post({action:'join',id:coach.id,name:'Visitor',status:'confirmed'},409);
+await post({action:'join',id:coach.id,name:'Visitor',status:'standby'});
+await post({action:'join',id:coach.id,name:'Visitor',status:'tentative'},409);
+user={userId:'owner',email:'owner@example.test',fullName:'Owner'};
+await post({action:'edit',id:coach.id,...details,capacity:10});
+user={userId:'visitor',email:'visitor@example.test',fullName:'Visitor'};
+await post({action:'join',id:coach.id,name:'Visitor',status:'confirmed'});
+await post({action:'join',id:coach.id,name:'Visitor',status:'tentative'});
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS count FROM players WHERE session=? AND status!='standby'").get(coach.id).count,10);
+await post({action:'leave',id:coach.id});
+user={userId:'owner',email:'owner@example.test',fullName:'Owner'};
+await post({action:'edit',id:coach.id,...details,capacity:9});
+assert.deepEqual(sqlite.prepare('SELECT * FROM sessions WHERE id=?').get(legacy.id),legacy,'other sessions stay unchanged');
+user=null;
+const publicBoard=await (await GET()).json();assert.equal(publicBoard.sessions.find(s=>s.id===coach.id).capacity,9);
+await post({action:'create',...details,capacity:8},401);
+sqlite.close();
+console.log('PASS: actual API create/edit validation; default 4; 1/8/12-player sessions; organizer authorization; eight-player cutoff; standby; capacity expansion/reduction; public API; all existing signups preserved');

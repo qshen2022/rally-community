@@ -1,0 +1,6 @@
+import {integer,sqliteTable,text,primaryKey} from 'drizzle-orm/sqlite-core';
+export const settings=sqliteTable('settings',{key:text('key').primaryKey(),value:text('value').notNull()});
+export const sessions=sqliteTable('sessions',{id:text('id').primaryKey(),owner:text('owner').notNull(),date:text('date').notNull(),start:text('start').notNull(),end:text('end').notNull(),court:text('court').notNull(),venue:text('venue').notNull().default('RBW'),booked:text('booked').notNull(),capacity:integer('capacity').notNull().default(4),notes:text('notes').notNull().default(''),cancelled:integer('cancelled').notNull().default(0),demo:integer('demo').notNull().default(0)});
+export const players=sqliteTable('players',{session:text('session').notNull().references(()=>sessions.id,{onDelete:'cascade'}),user:text('user').notNull(),name:text('name').notNull(),status:text('status').notNull(),joined:text('joined').notNull(),manual:integer('manual').notNull().default(0),rosterKey:text('roster_key'),nameKey:text('name_key'),addedBy:text('added_by'),addedByName:text('added_by_name')},t=>[primaryKey({columns:[t.session,t.user]})]);
+
+export const nameClaims=sqliteTable('name_claims',{key:text('key').primaryKey(),user:text('user').notNull().unique(),name:text('name').notNull(),created:text('created').notNull(),revision:text('revision').notNull().default('')});

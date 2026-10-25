@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {pacificNow,isPast,venueLabel,listingText,parseCapacity,sessionCapacity,openSpots} from '../lib/board.ts';
+import {canManage} from '../lib/organizer.ts';
+const s={id:'s',date:'2026-10-11',start:'16:30',end:'18:00',venue:'Green Lake Park',court:'',booked:'',notes:'No class',capacity:4,cancelled:0};
+assert.equal(pacificNow(new Date('2026-10-12T00:59:59Z')),'2026-10-11T17:59');
+assert.equal(isPast(s,new Date('2026-10-12T00:59:59Z')),false);
+assert.equal(isPast(s,new Date('2026-10-12T01:00:00Z')),true);
+assert.equal(pacificNow(new Date('2026-12-12T01:00:00Z')),'2026-12-11T17:00');
+assert.equal(venueLabel(s),'Green Lake Park');
+assert.equal(venueLabel({...s,court:'B'}),'Green Lake Park · Court B');
+const p=[{session:'s',name:'Morgan',status:'confirmed'},{session:'s',name:'Taylor',status:'tentative'},{session:'s',name:'Sam',status:'standby'}];
+const text=listingText([s,{...s,id:'old',date:'2026-10-10'},{...s,id:'cancel',cancelled:1}],p,'https://example.test',new Date('2026-10-11T23:00:00Z'));
+assert(text.includes('2 of 4 spots open'));assert(text.includes('Taylor (TBC)'));assert(text.includes('Waitlist: Sam'));assert(text.includes('Green Lake Park'));assert(text.includes('No class'));assert.equal(text.split('Green Lake Park').length-1,1);assert(!text.includes('Court undefined'));assert(!text.includes('Booked under:'));
+assert.equal(await canManage({owner:'x'},{userId:'x',email:'test@example.com'}),true);
+assert.equal(await canManage({owner:'screenshot-owner'},{userId:'x',email:'test@example.com'}),false);
+assert.equal(await canManage({owner:'another'},{userId:'x',email:'test@example.com'}),false);
+console.log('PASS: Pacific expiry boundary, winter offset, arbitrary venue, optional court, whole listing, TBC/standby/vacancies, past/cancel exclusions, organizer authorization');
+const {whatsappShareUrl}=await import('../lib/board.ts');
+const unicode='🎾 Tennis\nTaylor (TBC) & 王明\nhttps://rally.example.test/?a=1&b=2';
+const share=new URL(whatsappShareUrl(unicode));assert.equal(share.origin,'https://wa.me');assert.equal(share.pathname,'/');assert.equal(share.searchParams.get('text'),unicode);assert.equal([...share.searchParams.keys()].length,1);assert(!share.searchParams.has('phone'));assert(!share.href.includes('\n'));assert.equal(new URL(whatsappShareUrl(text)).searchParams.get('text'),text);assert.equal(text.split('Current board:').length-1,1);assert(!text.includes('userId'));assert(!text.includes('ownerHash'));
+console.log('PASS: WhatsApp official URL, Unicode/newlines/embedded URL round-trip, no recipient, single board link, same safe listing text');
+assert.equal(parseCapacity(undefined),4);assert.equal(parseCapacity(undefined,8),8);
+for(const value of [1,4,8,12,Number.MAX_SAFE_INTEGER])assert.equal(parseCapacity(value),value);
+assert.equal(parseCapacity('8'),8);
+for(const value of [0,-1,1.5,'',' ','4.5','abc',true,null,[],{},Infinity,NaN,Number.MAX_SAFE_INTEGER+1])assert.equal(parseCapacity(value),null);
+assert.equal(sessionCapacity({}),4);
+assert.equal(openSpots({capacity:8},4),4);assert.equal(openSpots({capacity:8},8),0);assert.equal(openSpots({capacity:4},8),0);
+for(const capacity of [1,8,12]){
+ const roster=capacity===1?[]:p;
+ const listing=listingText([{...s,capacity}],roster,'https://example.test',new Date('2026-10-11T23:00:00Z'));
+ assert(listing.includes(`${capacity-(roster.length?2:0)} of ${capacity} spots open`));
+}
+console.log('PASS: positive integer capacities, legacy default, full/overfull open spots, and custom-capacity WhatsApp listings');

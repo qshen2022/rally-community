@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `venue` text DEFAULT 'RBW' NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE `name_claims` ADD `revision` text DEFAULT '' NOT NULL;
